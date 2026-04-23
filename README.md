@@ -51,7 +51,6 @@ Each writeup includes:
 
 * All machines were tested in controlled lab environments.
 * No production systems were targeted.
-* Sensitive data and credentials have been sanitized.
 
 ---
 
