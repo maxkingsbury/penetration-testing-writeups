@@ -13,7 +13,7 @@
 Ran a full scan using Nmap:
 
 ```bash
-nmap -T4 -sV -A -p- IP
+nmap -T4 -sV -A -p- TARGET_IP
 ```
 
 Found web services and FTP. The HTTPS service exposed an MD5 hash.
