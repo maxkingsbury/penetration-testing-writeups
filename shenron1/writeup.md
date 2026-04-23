@@ -21,7 +21,7 @@ The primary contributing factors to compromise were:
 
 **Target System:**
 
-* Shenron1 (192.168.56.119)
+* Shenron1
 
 **Services in scope:**
 
@@ -53,7 +53,7 @@ The following penetration testing methodology was used:
 A full TCP port scan with service detection and default scripts was performed:
 
 ```bash
-nmap -T4 -sV -A -p- 192.168.56.119
+nmap -T4 -sV -A -p- TARGET_IP
 ```
 
 This identified a web service running a Joomla CMS instance.
