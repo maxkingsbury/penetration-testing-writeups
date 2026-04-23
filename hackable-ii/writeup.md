@@ -13,7 +13,7 @@
 Ran a full scan using Nmap:
 
 ```bash
-nmap -T4 -sV -A -p- 192.168.56.130
+nmap -T4 -sV -A -p- IP
 ```
 
 Found web services and FTP. The HTTPS service exposed an MD5 hash.
