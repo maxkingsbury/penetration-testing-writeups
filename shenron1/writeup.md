@@ -1,101 +1,183 @@
-# Shenron1
+# Penetration Test Report — Shenron1
 
-## Overview
+## 1. Executive Summary
 
-* Target: Shenron1
-* Platform: VulnHub / CTF VM
-* Focus: Web exploitation, credential discovery, lateral movement, sudo privilege escalation
+A security assessment was performed against the target system **Shenron1** to evaluate its resilience against common web application and operating system-level attacks.
+
+The assessment resulted in **full system compromise**, beginning with exploitation of a Joomla web application and culminating in **root-level access** via misconfigured sudo privileges.
+
+The primary contributing factors to compromise were:
+
+* Exposure of credentials in a hidden web-accessible file
+* Insecure Joomla plugin upload functionality enabling remote code execution
+* Storage of plaintext credentials in configuration files
+* Weak privilege escalation controls allowing misuse of `apt` via sudo
+
+**Final impact:** Complete compromise of system integrity, confidentiality, and availability.
 
 ---
 
-## Enumeration
+## 2. Scope
 
-A full port scan with service detection was performed:
+**Target System:**
+
+* Shenron1 (192.168.56.119)
+
+**Services in scope:**
+
+* Web application (Joomla CMS)
+* SSH service
+* Local operating system environment
+
+No external systems were assessed.
+
+---
+
+## 3. Methodology
+
+The following penetration testing methodology was used:
+
+1. Network enumeration
+2. Service identification and analysis
+3. Web application assessment
+4. Exploitation of identified vulnerabilities
+5. Privilege escalation
+6. Post-exploitation analysis
+
+---
+
+## 4. Technical Findings
+
+### 4.1 Open Port and Service Enumeration
+
+A full TCP port scan with service detection and default scripts was performed:
 
 ```bash
-nmap -T4 -sV -A -p- TARGET_IP
+nmap -T4 -sV -A -p- 192.168.56.119
 ```
 
-The results identified a web server hosting a Joomla application, which became the primary attack surface.
+This identified a web service running a Joomla CMS instance.
 
 ---
 
-## Initial Access
+### 4.2 Credential Exposure in Hidden File
 
-During manual enumeration of the web application, a hidden file was discovered containing credentials:
+During manual enumeration of the web application, a hidden file was discovered containing administrative credentials:
 
 ```
-admin:PASSWORD
+admin:3iqtzi4RhkWANcu@$pa$$
 ```
 
-These credentials were valid for the Joomla administrator panel.
+**Risk:** High
+**Impact:** Unauthorized administrative access to CMS
 
-After logging in, the admin interface exposed a plugin upload feature. Although the upload mechanism enforced a specific structure, it was possible to bypass validation and upload a malicious plugin.
-
-This resulted in remote code execution (RCE) on the target system.
+These credentials allowed direct authentication to the Joomla administrator panel.
 
 ---
 
-## Shell Access
+### 4.3 Remote Code Execution via Joomla Plugin Upload
 
-Following successful RCE, a reverse shell was attempted. However, the system’s netcat binary did not support the `-e` flag.
+After authentication, a plugin upload feature was identified. The upload mechanism enforced structural requirements but failed to properly validate or sanitize uploaded content.
 
-To bypass this limitation, a Python-based interactive shell was spawned instead, providing a more stable execution environment for further enumeration.
+By bypassing these restrictions, a malicious plugin was uploaded, resulting in **remote code execution (RCE)** on the server.
+
+**Vulnerability Class:**
+
+* Insecure file upload leading to arbitrary code execution
+
+**Risk:** Critical
+**Impact:** Full server-level code execution under web service privileges
 
 ---
 
-## Credential Discovery
+### 4.4 Shell Access and Environment Constraints
 
-While examining Joomla configuration files on the system, additional credentials were identified:
+A reverse shell was initially attempted; however, the system’s netcat implementation did not support the `-e` flag.
+
+A Python-based interactive shell was used instead, providing stable command execution for further enumeration.
+
+---
+
+### 4.5 Credential Discovery in Configuration Files
+
+During post-exploitation enumeration, Joomla configuration files were found to contain plaintext credentials:
 
 ```
 public $user = 'jenny';
-public $password = 'PASSWORD';
+public $password = 'Mypa$$wordi$notharD@123';
 ```
 
-These credentials were useful for further lateral movement within the system.
+**Risk:** High
+**Impact:** Credential reuse enabling lateral movement within system
 
 ---
 
-## Privilege Escalation (User → Shenron)
+## 5. Privilege Escalation
 
-Sudo privileges were enumerated using:
+### 5.1 Access to Secondary User (SSH Key Injection)
+
+Sudo privileges were enumerated:
 
 ```bash
 sudo -l
 ```
 
-Initial access to the `shenron` user was restricted. To pivot, SSH key authentication was used:
+Direct privilege escalation was not immediately available; however, SSH key-based authentication was leveraged to pivot to user **shenron**.
 
-* Generated an SSH key pair with `ssh-keygen`
-* Added the public key to `~/.ssh/authorized_keys` for the `shenron` user
-* Gained SSH access as `shenron`
+A key pair was generated and the public key was inserted into:
+
+```
+~/.ssh/authorized_keys
+```
+
+This enabled authenticated SSH access as the target user.
 
 ---
 
-## Privilege Escalation (Shenron → Root)
+### 5.2 Privilege Escalation via Misconfigured APT Sudo Rule
 
-Once logged in as `shenron`, sudo privileges were re-evaluated. The user was allowed to execute `apt` as root.
+Post-authentication enumeration revealed that the user **shenron** had permission to execute `apt` as root.
 
-This misconfiguration was exploited using the `APT::Update::Pre-Invoke` option to execute a shell during the update process:
+This was exploited using the `APT::Update::Pre-Invoke` option to execute a system shell during package update execution:
 
 ```bash
 sudo /usr/bin/apt update -o APT::Update::Pre-Invoke::=/bin/sh
 ```
 
-This resulted in an immediate root shell.
+This resulted in immediate **root-level shell access**.
+
+**Vulnerability Class:**
+
+* Unsafe sudo configuration allowing command injection via package manager hooks
+
+**Risk:** Critical
+**Impact:** Full root compromise
 
 ---
 
-## Flags
+## 6. Impact Assessment
 
-User flag:
+Successful exploitation resulted in:
+
+* Full administrative control of the Joomla CMS
+* Execution of arbitrary system commands as web user
+* Access to sensitive configuration data containing credentials
+* Lateral movement between system users
+* Complete root compromise of the operating system
+
+This constitutes a **total system compromise**.
+
+---
+
+## 7. Flags (Proof of Compromise)
+
+* User Flag:
 
 ```
 098bf43cc909e1f89bb4c910bd31e1d4
 ```
 
-Root flag:
+* Root Flag:
 
 ```
 aa087b2d466cd593622798c8e972bffb
@@ -103,10 +185,35 @@ aa087b2d466cd593622798c8e972bffb
 
 ---
 
-## Takeaways
+## 8. Recommendations
 
-* Joomla plugin upload features are a frequent RCE vector when improperly secured
-* Configuration files often expose reusable credentials that enable lateral movement
-* Python shells are a reliable fallback when netcat reverse shells are limited
-* SSH key injection remains a strong method for privilege pivoting when write access is available
-* Misconfigured sudo permissions on package managers such as `apt` can directly lead to root via pre-execution hooks
+### 8.1 Web Application Security
+
+* Disable or restrict Joomla plugin upload functionality
+* Implement strict file type validation and server-side content inspection
+* Enforce least privilege for CMS administrative roles
+
+### 8.2 Credential Management
+
+* Remove all plaintext credentials from configuration files
+* Implement secure secret storage mechanisms (e.g., vault solutions)
+* Rotate all exposed credentials immediately
+
+### 8.3 System Hardening
+
+* Review and restrict sudo permissions, particularly for package managers such as `apt`
+* Disable or tightly control `APT::Update::Pre-Invoke` functionality
+* Implement least privilege access controls for all users
+
+### 8.4 SSH Security
+
+* Enforce key management policies
+* Monitor and restrict unauthorized modifications to `authorized_keys`
+
+---
+
+## 9. Conclusion
+
+The target system **Shenron1** was fully compromised due to a combination of insecure web application configuration, exposed credentials, and misconfigured privilege escalation pathways.
+
+The attack chain demonstrates how low-complexity initial vulnerabilities can escalate into full system compromise when combined with weak operational security and privilege mismanagement.
