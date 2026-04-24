@@ -19,7 +19,7 @@ Final impact: **complete root-level system compromise**
 
 **Target System:**
 
-* Momentum 2 (Target IP)
+* Momentum 2
 
 **In-Scope Components:**
 
@@ -58,7 +58,7 @@ nmap -sV -A <target-ip>
 
 ### Findings:
 
-* Port 80: HTTP (web application)
+* Port 80: HTTP
 * Port 22: SSH
 
 The presence of a web application indicated a likely initial attack vector.
